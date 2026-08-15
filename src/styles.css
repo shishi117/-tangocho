@@ -38,7 +38,7 @@ body {
   background: var(--bg);
 }
 
-/* キーボード操作の可視フォーカス（要件: 主要操作をキーボードで実行可能） */
+/* キーボード操作の可視フォーカス */
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -64,7 +64,7 @@ body {
 
 /* 署名: わずかにずらして重ねたカード */
 .mark {
-  display: inline-grid;
+  display: inline-block;
   width: 44px;
   height: 44px;
   margin-bottom: 16px;
@@ -122,6 +122,9 @@ body {
   cursor: pointer;
 }
 
+.error:empty {
+  display: none;
+}
 .error {
   color: var(--danger);
   margin: 16px 0 0;
