@@ -166,3 +166,166 @@ body {
     animation: none !important;
   }
 }
+
+/* Slice 1: ナビ・フォーム・学習 -------------------------------------- */
+.nav {
+  display: flex;
+  gap: 4px;
+  margin-left: 8px;
+}
+.tab {
+  font: inherit;
+  padding: 6px 12px;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.tab.active {
+  color: var(--accent);
+  background: #eef1fb;
+  font-weight: 600;
+}
+
+.content h2 {
+  font-size: 20px;
+  margin: 0 0 16px;
+}
+
+.fld {
+  display: block;
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.fld input,
+.fld textarea,
+.fld select {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  font: inherit;
+  font-size: 16px; /* iOSの入力時ズーム防止も兼ねる */
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.fld textarea {
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.btn-inline {
+  width: auto;
+}
+
+.result {
+  margin-top: 16px;
+  color: var(--ink);
+  font-size: 15px;
+}
+.muted-line {
+  color: var(--muted);
+}
+
+/* 学習 */
+.study {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+.progress {
+  color: var(--muted);
+  font-size: 14px;
+  letter-spacing: 0.08em;
+}
+.card {
+  width: 100%;
+  max-width: 480px;
+  min-height: 220px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 32px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  text-align: center;
+}
+.face.front {
+  font-size: 28px;
+  font-weight: 600;
+}
+.face.back {
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+  width: 100%;
+}
+.b-main {
+  font-size: 20px;
+}
+.b-sub {
+  color: var(--muted);
+  font-size: 15px;
+  margin-top: 8px;
+}
+.b-pos {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 2px 10px;
+  font-size: 13px;
+  color: var(--accent);
+  background: #eef1fb;
+  border-radius: 999px;
+}
+.reveal {
+  font: inherit;
+  padding: 10px 20px;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.grade {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  max-width: 480px;
+}
+.btn-right,
+.btn-wrong {
+  flex: 1;
+  font: inherit;
+  font-weight: 600;
+  padding: 14px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  color: #fff;
+}
+.btn-right {
+  background: #1e7d4f; /* 対 白文字 4.7:1 */
+}
+.btn-wrong {
+  background: var(--danger);
+}
+.quit {
+  margin-top: 4px;
+}
+.summary {
+  font-size: 20px;
+}

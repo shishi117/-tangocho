@@ -1,7 +1,26 @@
 import { login, logout, watchAuth } from "./auth.js";
+import { listDecks, findOrCreateDeck } from "./decks.js";
+import { listCards, importCards, recordAnswer } from "./cards.js";
+import { normalizeCsv } from "./domain/csv.js";
+import { pickCard } from "./domain/leitner.js";
 
 const root = document.getElementById("root");
 
+let view = "import";
+let session = null;
+
+// --- 共通ヘルパ ---------------------------------------------------------
+function escapeHtml(s) {
+  return String(s).replace(
+    /[&<>"']/g,
+    (ch) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        ch
+      ],
+  );
+}
+
+// --- 認証ゲート ---------------------------------------------------------
 function renderLoading() {
   root.innerHTML = `<main class="center" aria-busy="true">読み込み中…</main>`;
 }
@@ -23,31 +42,250 @@ function renderLogin() {
     try {
       await login();
     } catch {
-      // 失敗は原因より次の行動を伝える（キャンセル/ポップアップブロック等）。
       err.textContent =
         "サインインできませんでした。ポップアップを許可して再試行してください。";
     }
   });
 }
 
+// --- シェル -------------------------------------------------------------
 function renderShell(user) {
   root.innerHTML = `
     <div class="app">
       <header class="topbar">
         <span class="brand">単語帳</span>
+        <nav class="nav">
+          <button class="tab" data-view="import">取り込み</button>
+          <button class="tab" data-view="study">学習</button>
+        </nav>
         <span class="spacer"></span>
-        <span class="who" id="who"></span>
+        <span class="who"></span>
         <button class="btn-ghost" id="logout">サインアウト</button>
       </header>
-      <main class="content">
-        <p class="placeholder">準備完了。次のスライスで「取り込み → 出題 → 成績」を通します。</p>
-      </main>
+      <main class="content"><div id="view"></div></main>
     </div>`;
-  // 動的値は textContent で注入（innerHTML経由の混入を避ける）。
-  root.querySelector("#who").textContent = user.email ?? "";
+  root.querySelector(".who").textContent = user.email ?? "";
   root.querySelector("#logout").addEventListener("click", () => logout());
+  root.querySelectorAll(".tab").forEach((b) =>
+    b.addEventListener("click", () => {
+      if (session) return; // セッション中はタブ移動で誤操作させない（中断ボタンで抜ける）
+      view = b.dataset.view;
+      renderView();
+    }),
+  );
+  renderView();
 }
 
+function renderView() {
+  root
+    .querySelectorAll(".tab")
+    .forEach((b) => b.classList.toggle("active", b.dataset.view === view));
+  const host = root.querySelector("#view");
+  if (view === "import") renderImport(host);
+  else renderStudy(host);
+}
+
+// --- 取り込み (FR005) ---------------------------------------------------
+function renderImport(host) {
+  host.innerHTML = `
+    <h2>取り込み</h2>
+    <label class="fld">単語帳名
+      <input id="deckName" type="text" placeholder="例: 英検準1級" />
+    </label>
+    <label class="fld">CSV（先頭行に列名: term,meaning,example,explanation,partOfSpeech,tags,importance）
+      <textarea id="csv" rows="8" placeholder="term,meaning&#10;りんご,apple"></textarea>
+    </label>
+    <div class="row">
+      <input id="file" type="file" accept=".csv,text/csv" />
+      <button class="btn-primary btn-inline" id="run">取り込む</button>
+    </div>
+    <p class="result" id="result" role="status"></p>`;
+
+  const csv = host.querySelector("#csv");
+  host.querySelector("#file").addEventListener("change", async (e) => {
+    const f = e.target.files[0];
+    if (f) csv.value = await f.text();
+  });
+  host.querySelector("#run").addEventListener("click", async () => {
+    const result = host.querySelector("#result");
+    const name = host.querySelector("#deckName").value.trim();
+    if (!name) {
+      result.textContent = "単語帳名を入力してください。";
+      return;
+    }
+    const norm = normalizeCsv(csv.value);
+    if (!norm.ok) {
+      result.textContent =
+        norm.reason === "no_term_column"
+          ? "エラー: term 列がありません。先頭行に列名を入れてください。"
+          : "エラー: CSVが空です。";
+      return;
+    }
+    result.textContent = "取り込み中…";
+    try {
+      const deckId = await findOrCreateDeck(name);
+      const { success, skipped } = await importCards(deckId, norm.cards);
+      result.textContent =
+        `登録 ${success} / スキップ ${skipped} / エラー ${norm.errorCount}` +
+        (norm.errorRows.length
+          ? `（エラー行: ${norm.errorRows.join(", ")}）`
+          : "");
+    } catch {
+      result.textContent =
+        "取り込みに失敗しました。通信状態を確認して再試行してください。";
+    }
+  });
+}
+
+// --- 学習 (FR008/010/011) ----------------------------------------------
+async function renderStudy(host) {
+  if (session) {
+    renderCard(host);
+    return;
+  }
+  host.innerHTML = `<h2>学習</h2><p class="muted-line">単語帳を読み込み中…</p>`;
+  let decks;
+  try {
+    decks = await listDecks();
+  } catch {
+    host.innerHTML = `<h2>学習</h2><p class="result">単語帳の読み込みに失敗しました。</p>`;
+    return;
+  }
+  if (decks.length === 0) {
+    host.innerHTML = `<h2>学習</h2><p class="muted-line">まず「取り込み」でカードを登録してください。</p>`;
+    return;
+  }
+  host.innerHTML = `
+    <h2>学習</h2>
+    <label class="fld">単語帳
+      <select id="deck">${decks
+        .map((d) => `<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)}</option>`)
+        .join("")}</select>
+    </label>
+    <label class="fld">セッション
+      <select id="size">
+        <option value="20">20枚</option>
+        <option value="all">単語帳一巡</option>
+      </select>
+    </label>
+    <button class="btn-primary btn-inline" id="start">開始</button>
+    <p class="result" id="msg" role="status"></p>`;
+  host.querySelector("#start").addEventListener("click", () => startSession(host));
+}
+
+async function startSession(host) {
+  const deckId = host.querySelector("#deck").value;
+  const size = host.querySelector("#size").value;
+  const msg = host.querySelector("#msg");
+  msg.textContent = "読み込み中…";
+  let cards;
+  try {
+    cards = await listCards(deckId);
+  } catch {
+    msg.textContent = "カードの読み込みに失敗しました。";
+    return;
+  }
+  if (cards.length === 0) {
+    msg.textContent = "有効なカードがありません。"; // FR008 例外
+    return;
+  }
+  const total = size === "all" ? cards.length : Math.min(20, cards.length);
+  session = { pool: cards, total, answered: 0, correct: 0, current: null, revealed: false };
+  renderCard(host);
+}
+
+function backHtml(c) {
+  const parts = [];
+  if (c.meaning) parts.push(`<div class="b-main">${escapeHtml(c.meaning)}</div>`);
+  if (c.example) parts.push(`<div class="b-sub">例: ${escapeHtml(c.example)}</div>`);
+  if (c.explanation) parts.push(`<div class="b-sub">${escapeHtml(c.explanation)}</div>`);
+  if (c.partOfSpeech) parts.push(`<div class="b-pos">${escapeHtml(c.partOfSpeech)}</div>`);
+  return parts.join("") || `<div class="b-main muted-line">（裏面なし）</div>`;
+}
+
+function renderCard(host) {
+  const s = session;
+  if (s.answered >= s.total || s.pool.length === 0) {
+    renderSummary(host);
+    return;
+  }
+  if (!s.current) {
+    s.current = pickCard(s.pool); // FR010 箱の重み付き抽選
+    s.revealed = false;
+  }
+  const c = s.current;
+  host.innerHTML = `
+    <div class="study">
+      <div class="progress">${s.answered + 1} / ${s.total}</div>
+      <div class="card">
+        <div class="face front">${escapeHtml(c.term)}</div>
+        ${
+          s.revealed
+            ? `<div class="face back">${backHtml(c)}</div>`
+            : `<button class="reveal" id="reveal">裏面を見る</button>`
+        }
+      </div>
+      ${
+        s.revealed
+          ? `<div class="grade">
+               <button class="btn-wrong" id="wrong">不正解</button>
+               <button class="btn-right" id="right">正解</button>
+             </div>`
+          : ""
+      }
+      <button class="btn-ghost quit" id="quit">中断する</button>
+    </div>`;
+
+  if (!s.revealed) {
+    host.querySelector("#reveal").addEventListener("click", () => {
+      s.revealed = true;
+      renderCard(host);
+    });
+  } else {
+    host.querySelector("#right").addEventListener("click", () => grade(host, true));
+    host.querySelector("#wrong").addEventListener("click", () => grade(host, false));
+  }
+  // 中断= FR012の切替に相当。各回答は都度保存済みなので、抜けるだけで成績は確定している。
+  host.querySelector("#quit").addEventListener("click", () => {
+    session = null;
+    renderView();
+  });
+}
+
+function grade(host, correct) {
+  const s = session;
+  const c = s.current;
+  // FR009: オフライン時はSDKがローカル保持→自動再送するため、UIはサーバ確定を待たない。
+  recordAnswer(c, correct).catch(() => {});
+  s.answered++;
+  if (correct) s.correct++;
+  s.pool = s.pool.filter((x) => x.id !== c.id); // 同一セッション内での再出題を避ける
+  s.current = null;
+  renderCard(host);
+}
+
+function renderSummary(host) {
+  const s = session;
+  const rate = s.answered ? Math.round((s.correct / s.answered) * 100) : 0;
+  host.innerHTML = `
+    <div class="study">
+      <h2>セッション終了</h2>
+      <p class="summary">${s.answered} 枚 / 正答率 ${rate}%（${s.correct} / ${s.answered}）</p>
+      <button class="btn-primary btn-inline" id="again">学習に戻る</button>
+    </div>`;
+  host.querySelector("#again").addEventListener("click", () => {
+    session = null;
+    renderView();
+  });
+}
+
+// --- 起動 ---------------------------------------------------------------
 renderLoading();
-// Slice 0 到達点: サインインすると空のシェルが出る。以降のスライスでシェル内に画面を足す。
-watchAuth((user) => (user ? renderShell(user) : renderLogin()));
+watchAuth((user) => {
+  if (user) {
+    renderShell(user);
+  } else {
+    session = null;
+    renderLogin();
+  }
+});
