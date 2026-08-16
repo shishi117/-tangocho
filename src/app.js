@@ -1,23 +1,33 @@
 import { login, logout, watchAuth } from "./auth.js";
-import { listDecks, findOrCreateDeck } from "./decks.js";
-import { listCards, importCards, recordAnswer } from "./cards.js";
-import { normalizeCsv } from "./domain/csv.js";
+import { listDecks } from "./decks.js";
+import { listCards, listAllCards, recordAnswer } from "./cards.js";
+import { getSettings, recordSessionDay } from "./settings.js";
 import { pickCard } from "./domain/leitner.js";
+import {
+  allTimeAccuracy,
+  masteryRate,
+  recentAccuracy,
+} from "./domain/stats.js";
+import { escapeHtml, pct } from "./ui-util.js";
+import { renderImport } from "./ui-import.js";
+import { renderManage } from "./ui-manage.js";
 
 const root = document.getElementById("root");
 
 let view = "import";
 let session = null;
 
-// --- 共通ヘルパ ---------------------------------------------------------
-function escapeHtml(s) {
-  return String(s).replace(
-    /[&<>"']/g,
-    (ch) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
-        ch
-      ],
-  );
+// ローカル日付（YYYY-MM-DD）。連続日数はユーザーのローカル時刻基準（端末クロック依存）。
+function localDateStr(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+function yesterdayStr() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return localDateStr(d);
 }
 
 // --- 認証ゲート ---------------------------------------------------------
@@ -57,6 +67,8 @@ function renderShell(user) {
         <nav class="nav">
           <button class="tab" data-view="import">取り込み</button>
           <button class="tab" data-view="study">学習</button>
+          <button class="tab" data-view="progress">進捗</button>
+          <button class="tab" data-view="manage">管理</button>
         </nav>
         <span class="spacer"></span>
         <span class="who"></span>
@@ -82,59 +94,9 @@ function renderView() {
     .forEach((b) => b.classList.toggle("active", b.dataset.view === view));
   const host = root.querySelector("#view");
   if (view === "import") renderImport(host);
-  else renderStudy(host);
-}
-
-// --- 取り込み (FR005) ---------------------------------------------------
-function renderImport(host) {
-  host.innerHTML = `
-    <h2>取り込み</h2>
-    <label class="fld">単語帳名
-      <input id="deckName" type="text" placeholder="例: 英検準1級" />
-    </label>
-    <label class="fld">CSV（先頭行に列名: term,meaning,example,explanation,partOfSpeech,tags,importance）
-      <textarea id="csv" rows="8" placeholder="term,meaning&#10;りんご,apple"></textarea>
-    </label>
-    <div class="row">
-      <input id="file" type="file" accept=".csv,text/csv" />
-      <button class="btn-primary btn-inline" id="run">取り込む</button>
-    </div>
-    <p class="result" id="result" role="status"></p>`;
-
-  const csv = host.querySelector("#csv");
-  host.querySelector("#file").addEventListener("change", async (e) => {
-    const f = e.target.files[0];
-    if (f) csv.value = await f.text();
-  });
-  host.querySelector("#run").addEventListener("click", async () => {
-    const result = host.querySelector("#result");
-    const name = host.querySelector("#deckName").value.trim();
-    if (!name) {
-      result.textContent = "単語帳名を入力してください。";
-      return;
-    }
-    const norm = normalizeCsv(csv.value);
-    if (!norm.ok) {
-      result.textContent =
-        norm.reason === "no_term_column"
-          ? "エラー: term 列がありません。先頭行に列名を入れてください。"
-          : "エラー: CSVが空です。";
-      return;
-    }
-    result.textContent = "取り込み中…";
-    try {
-      const deckId = await findOrCreateDeck(name);
-      const { success, skipped } = await importCards(deckId, norm.cards);
-      result.textContent =
-        `登録 ${success} / スキップ ${skipped} / エラー ${norm.errorCount}` +
-        (norm.errorRows.length
-          ? `（エラー行: ${norm.errorRows.join(", ")}）`
-          : "");
-    } catch {
-      result.textContent =
-        "取り込みに失敗しました。通信状態を確認して再試行してください。";
-    }
-  });
+  else if (view === "study") renderStudy(host);
+  else if (view === "progress") renderProgress(host);
+  else renderManage(host);
 }
 
 // --- 学習 (FR008/010/011) ----------------------------------------------
@@ -266,6 +228,8 @@ function grade(host, correct) {
 
 function renderSummary(host) {
   const s = session;
+  // FR014: セッション完了を1日分としてカウント。UIは待たない（オフライン時はSDKが再送）。
+  recordSessionDay(localDateStr(), yesterdayStr()).catch(() => {});
   const rate = s.answered ? Math.round((s.correct / s.answered) * 100) : 0;
   host.innerHTML = `
     <div class="study">
@@ -277,6 +241,96 @@ function renderSummary(host) {
     session = null;
     renderView();
   });
+}
+
+// --- 進捗 (FR013/014) ---------------------------------------------------
+function statCells(cards, threshold, minAnswers) {
+  const r = recentAccuracy(cards, 20);
+  return {
+    count: cards.length,
+    mastery: pct(masteryRate(cards, threshold, minAnswers)),
+    all: pct(allTimeAccuracy(cards)),
+    recent: r.count ? `${pct(r.rate)}（${r.count}回）` : "—",
+  };
+}
+
+async function renderProgress(host) {
+  host.innerHTML = `<h2>進捗</h2><p class="muted-line">集計中…</p>`;
+  let cards, decks, settings;
+  try {
+    [cards, decks, settings] = await Promise.all([
+      listAllCards(),
+      listDecks(),
+      getSettings(),
+    ]);
+  } catch {
+    host.innerHTML = `<h2>進捗</h2><p class="result">集計の読み込みに失敗しました。</p>`;
+    return;
+  }
+  const threshold = settings?.threshold ?? 0.8;
+  const minAnswers = settings?.minAnswers ?? 5;
+  const streak = settings?.streak ?? 0;
+
+  if (cards.length === 0) {
+    host.innerHTML = `<h2>進捗</h2><p class="muted-line">まだカードがありません。「取り込み」から始めてください。</p>`;
+    return;
+  }
+
+  const overall = statCells(cards, threshold, minAnswers);
+  const deckName = new Map(decks.map((d) => [d.id, d.name]));
+  const deckTheme = new Map(decks.map((d) => [d.id, d.theme || ""]));
+
+  // 帳別・テーマ別に有効カードをまとめる。
+  const pushTo = (map, key, val) => {
+    const arr = map.get(key);
+    if (arr) arr.push(val);
+    else map.set(key, [val]);
+  };
+  const byDeck = new Map();
+  const byTheme = new Map();
+  for (const c of cards) {
+    pushTo(byDeck, c.deckId, c);
+    pushTo(byTheme, deckTheme.get(c.deckId) || "", c);
+  }
+
+  const deckRows = [...byDeck.entries()]
+    .map(([id, cs]) => {
+      const s = statCells(cs, threshold, minAnswers);
+      return `<tr><th scope="row">${escapeHtml(deckName.get(id) ?? "（不明）")}</th>
+        <td>${s.count}</td><td>${s.mastery}</td><td>${s.all}</td><td>${s.recent}</td></tr>`;
+    })
+    .join("");
+
+  const themeRows = [...byTheme.entries()]
+    .map(([th, cs]) => {
+      const s = statCells(cs, threshold, minAnswers);
+      const label = th || "（テーマ未設定）";
+      return `<tr><th scope="row">${escapeHtml(label)}</th>
+        <td>${s.count}</td><td>${s.mastery}</td></tr>`;
+    })
+    .join("");
+
+  host.innerHTML = `
+    <h2>進捗</h2>
+    <div class="kpis">
+      <div class="kpi"><div class="kpi-num">${overall.mastery}</div><div class="kpi-lbl">習得率</div></div>
+      <div class="kpi"><div class="kpi-num">${streak}日</div><div class="kpi-lbl">連続学習</div></div>
+      <div class="kpi"><div class="kpi-num">${overall.all}</div><div class="kpi-lbl">全期間 正答率</div></div>
+      <div class="kpi"><div class="kpi-num">${overall.recent}</div><div class="kpi-lbl">直近20回 正答率</div></div>
+    </div>
+    <p class="muted-line small">習得の基準: 正答率 ${pct(threshold)} 以上 かつ 累計 ${minAnswers} 回以上</p>
+
+    <h3 class="sub-h">単語帳別</h3>
+    <table class="stat">
+      <thead><tr><th>単語帳</th><th>枚数</th><th>習得率</th><th>全期間</th><th>直近20</th></tr></thead>
+      <tbody>${deckRows}</tbody>
+    </table>
+
+    <h3 class="sub-h">テーマ別</h3>
+    <table class="stat">
+      <thead><tr><th>テーマ</th><th>枚数</th><th>習得率</th></tr></thead>
+      <tbody>${themeRows}</tbody>
+    </table>`;
 }
 
 // --- 起動 ---------------------------------------------------------------

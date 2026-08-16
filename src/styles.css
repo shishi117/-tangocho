@@ -329,3 +329,208 @@ body {
 .summary {
   font-size: 20px;
 }
+
+/* Slice 2: 進捗 ------------------------------------------------------- */
+.sub-h {
+  font-size: 15px;
+  color: var(--muted);
+  margin: 28px 0 8px;
+}
+.small {
+  font-size: 13px;
+}
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.kpi {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+}
+.kpi-num {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.kpi-lbl {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+table.stat {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+table.stat th,
+table.stat td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+table.stat thead th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 13px;
+}
+table.stat td {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+table.stat tbody th {
+  font-weight: 500;
+}
+
+/* Slice 3: 取り込み/プレビュー/管理 ---------------------------------- */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 16px;
+}
+.panel .sub-h {
+  margin-top: 0;
+}
+.fld.inline {
+  display: inline-block;
+  margin-right: 12px;
+}
+.fld.inline input,
+.fld.inline select {
+  width: auto;
+  display: inline-block;
+  margin-top: 0;
+  margin-left: 6px;
+}
+.prompt-box {
+  width: 100%;
+  margin: 8px 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+/* プレビュー表 */
+.preview-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+table.preview {
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 720px;
+}
+table.preview th,
+table.preview td {
+  border-bottom: 1px solid var(--border);
+  padding: 4px 6px;
+  text-align: left;
+}
+table.preview thead th {
+  color: var(--muted);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+}
+table.preview input[type="text"],
+table.preview input:not([type]) {
+  width: 110px;
+  font: inherit;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+table.preview input.wide {
+  width: 160px;
+}
+table.preview input.narrow {
+  width: 48px;
+}
+
+/* 管理 */
+.mtools {
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.mtools #mq {
+  flex: 1;
+  min-width: 160px;
+  font: inherit;
+  font-size: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.mtools select {
+  font: inherit;
+  font-size: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--surface);
+}
+.mlist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  flex-wrap: wrap;
+}
+.mrow-main {
+  flex: 1;
+  min-width: 160px;
+}
+.mterm {
+  font-weight: 600;
+}
+.mmean {
+  color: var(--muted);
+  font-size: 14px;
+}
+.mtags {
+  margin-top: 4px;
+}
+.chip {
+  display: inline-block;
+  font-size: 12px;
+  color: var(--accent);
+  background: #eef1fb;
+  border-radius: 999px;
+  padding: 1px 8px;
+  margin-right: 4px;
+}
+.mrow-stat {
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.mrow-act {
+  display: flex;
+  gap: 6px;
+}
+.btn-ghost.danger {
+  color: var(--danger);
+  border-color: #f2c4c0;
+}
+.editor {
+  max-width: 480px;
+}

@@ -60,6 +60,29 @@ export function parseCsv(text) {
   return rows;
 }
 
+export const CSV_FIELDS = FIELDS;
+
+// 生の項目（文字列）を検証・正規化して1枚のカードにする。取り込みとプレビュー確定で共有。
+// 戻り値 {ok:false} は「除外対象」（term空 または 256文字超過）。
+export function validateFields(v) {
+  const c = {};
+  for (const f of FIELDS) c[f] = stripControl(v[f] ?? "");
+  if (c.term.trim() === "") return { ok: false };
+  if (Object.values(c).some((x) => x.length > MAX_LEN)) return { ok: false };
+  return {
+    ok: true,
+    card: {
+      term: c.term,
+      meaning: c.meaning,
+      example: c.example,
+      explanation: c.explanation,
+      partOfSpeech: c.partOfSpeech,
+      tags: c.tags.split(";").map((t) => t.trim()).filter(Boolean),
+      importance: clampImportance(c.importance),
+    },
+  };
+}
+
 // 正規化＋検証。戻り値は取り込み入口の契約に沿う。
 // { ok, reason?, cards, errorRows, errorCount }  errorRowsは1始まりの行番号（ヘッダを1行目とする）。
 export function normalizeCsv(text) {
@@ -71,7 +94,6 @@ export function normalizeCsv(text) {
   const idx = {};
   for (const f of FIELDS) idx[f] = header.indexOf(f);
   if (idx.term === -1) {
-    // term列が無い → ファイル全体をエラー。
     return { ok: false, reason: "no_term_column", cards: [], errorRows: [], errorCount: 0 };
   }
 
@@ -82,37 +104,13 @@ export function normalizeCsv(text) {
     const lineNo = r + 1; // ヘッダが1行目
     if (raw.every((c) => c.trim() === "")) continue; // 空行はスキップ（エラーではない）
 
-    const get = (f) =>
-      stripControl(idx[f] >= 0 && idx[f] < raw.length ? raw[idx[f]] : ""); // 列不足は空欄扱い
-
-    const v = {
-      term: get("term"),
-      meaning: get("meaning"),
-      example: get("example"),
-      explanation: get("explanation"),
-      partOfSpeech: get("partOfSpeech"),
-      tags: get("tags"),
-      importance: get("importance"),
-    };
-
-    if (v.term.trim() === "") {
-      errorRows.push(lineNo); // term空はエラー行
-      continue;
+    const v = {};
+    for (const f of FIELDS) {
+      v[f] = idx[f] >= 0 && idx[f] < raw.length ? raw[idx[f]] : ""; // 列不足は空欄扱い
     }
-    if (Object.values(v).some((x) => x.length > MAX_LEN)) {
-      errorRows.push(lineNo); // 256文字超過はエラー行
-      continue;
-    }
-
-    cards.push({
-      term: v.term,
-      meaning: v.meaning,
-      example: v.example,
-      explanation: v.explanation,
-      partOfSpeech: v.partOfSpeech,
-      tags: v.tags.split(";").map((t) => t.trim()).filter(Boolean),
-      importance: clampImportance(v.importance),
-    });
+    const res = validateFields(v);
+    if (!res.ok) errorRows.push(lineNo);
+    else cards.push(res.card);
   }
   return { ok: true, cards, errorRows, errorCount: errorRows.length };
 }
