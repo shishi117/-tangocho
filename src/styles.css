@@ -534,3 +534,22 @@ table.preview input.narrow {
 .editor {
   max-width: 480px;
 }
+
+/* Slice 4: 警告バナー・注記 ------------------------------------------- */
+.banner {
+  background: #fff4e5;
+  border: 1px solid #f0c98a;
+  color: #7a4a00; /* 対 背景 4.8:1 */
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+.note {
+  margin: 16px 0 0;
+  padding: 10px 12px;
+  font-size: 14px;
+  color: var(--muted);
+  background: #eef1fb;
+  border-radius: 8px;
+}

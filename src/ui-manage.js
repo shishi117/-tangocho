@@ -1,10 +1,10 @@
 import { listDecks, listThemes } from "./decks.js";
 import { listCards, addCard, updateCard, softDeleteCard } from "./cards.js";
-import { validateFields, CSV_FIELDS } from "./domain/csv.js";
+import { validateFields, CSV_FIELDS, toCsv } from "./domain/csv.js";
 import { searchCards } from "./domain/search.js";
-import { escapeHtml } from "./ui-util.js";
+import { escapeHtml, downloadText } from "./ui-util.js";
 
-const state = { theme: null, deckId: null, query: "", sortBy: "", order: "desc" };
+const state = { theme: null, deckId: null, deckName: "", query: "", sortBy: "", order: "desc" };
 let loaded = []; // 選択中単語帳のカード（キャッシュ）
 
 export async function renderManage(host) {
@@ -26,6 +26,7 @@ export async function renderManage(host) {
   if (!decksInTheme.some((d) => d.id === state.deckId)) {
     state.deckId = decksInTheme[0]?.id ?? null;
   }
+  state.deckName = decksInTheme.find((d) => d.id === state.deckId)?.name ?? "cards";
 
   const themeOpts = themes
     .map(
@@ -84,6 +85,7 @@ async function renderCards(host) {
       </select>
       <select id="morder"><option value="desc">降順</option><option value="asc">昇順</option></select>
       <button class="btn-primary btn-inline" id="madd">＋新規カード</button>
+      <button class="btn-ghost btn-inline" id="mexport">CSV書き出し</button>
     </div>
     <div id="mlistbox"></div>`;
 
@@ -106,6 +108,15 @@ async function renderCards(host) {
     renderList(host);
   });
   box.querySelector("#madd").addEventListener("click", () => openEditor(host, null));
+  box.querySelector("#mexport").addEventListener("click", () => {
+    // FR018: 論理削除カードは出力対象外（FR005で再取込した際に復活するのを避けるため）。loadedは有効カードのみ。
+    if (loaded.length === 0) {
+      alert("書き出す対象がありません。");
+      return;
+    }
+    const safe = state.deckName.replace(/[\\/:*?"<>|]/g, "_");
+    downloadText(`${safe}.csv`, toCsv(loaded));
+  });
   renderList(host);
 }
 

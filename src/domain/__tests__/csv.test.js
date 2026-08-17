@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { normalizeCsv, parseCsv } from "../csv.js";
+import { normalizeCsv, parseCsv, toCsv } from "../csv.js";
 
 test("parseCsv: 引用符内のカンマ・改行・エスケープを処理", () => {
   const rows = parseCsv('term,meaning\n"a,b","line1\nline2"\n"he said ""hi""",x');
@@ -45,4 +45,19 @@ test("tags は ; 区切りで配列化、importance は範囲補正", () => {
 test("制御文字（改行・タブ以外）は除去", () => {
   const res = normalizeCsv("term\nり\u0007んご");
   assert.equal(res.cards[0].term, "りんご");
+});
+
+test("toCsv→normalizeCsv 往復: カンマ・引用符・改行・tags・importanceを保持", () => {
+  const cards = [
+    { term: "a,b", meaning: 'say "hi"', example: "l1\nl2", explanation: "", partOfSpeech: "名詞", tags: ["x", "y"], importance: 5 },
+    { term: "犬", meaning: "dog", example: "", explanation: "", partOfSpeech: "", tags: [], importance: 3 },
+  ];
+  const back = normalizeCsv(toCsv(cards));
+  assert.equal(back.ok, true);
+  assert.equal(back.cards.length, 2);
+  assert.equal(back.cards[0].term, "a,b");
+  assert.equal(back.cards[0].meaning, 'say "hi"');
+  assert.equal(back.cards[0].example, "l1\nl2");
+  assert.deepEqual(back.cards[0].tags, ["x", "y"]);
+  assert.equal(back.cards[0].importance, 5);
 });

@@ -3,6 +3,7 @@ import { importCards } from "./cards.js";
 import { normalizeCsv, validateFields, CSV_FIELDS } from "./domain/csv.js";
 import { buildPrompt } from "./domain/prompt.js";
 import { escapeHtml } from "./ui-util.js";
+import { isDegraded, noteError } from "./quota.js";
 
 // プレビュー用の一時状態。
 let pending = null; // { deckName, theme, dedup, cards, errorRows }
@@ -154,6 +155,12 @@ function renderPreview(host) {
 async function commitPreview(host) {
   const p = pending;
   const msg = host.querySelector("#pmsg");
+  // FR017: 無料枠超過中は取り込み（生成系の追加書き込み）を停止。学習・成績記録は継続可。
+  if (isDegraded()) {
+    msg.textContent =
+      "無料枠超過中のため取り込みは停止しています。学習と成績記録は継続できます。枠が回復してから再試行してください。";
+    return;
+  }
   const trs = [...host.querySelectorAll("tr[data-row]")];
   const valid = [];
   let excluded = 0;
@@ -183,7 +190,11 @@ async function commitPreview(host) {
       <p class="summary">登録 ${success} / スキップ ${skipped} / 除外 ${excluded}</p>
       <button class="btn-primary btn-inline" id="again">取り込みに戻る</button>`;
     host.querySelector("#again").addEventListener("click", () => renderImport(host));
-  } catch {
-    msg.textContent = "登録に失敗しました。通信状態を確認して再試行してください。";
+  } catch (e) {
+    noteError(e);
+    msg.textContent =
+      e && e.code === "resource-exhausted"
+        ? "無料枠超過のため取り込めませんでした。学習・成績記録は継続できます。"
+        : "登録に失敗しました。通信状態を確認して再試行してください。";
   }
 }

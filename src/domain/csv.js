@@ -60,6 +60,29 @@ export function parseCsv(text) {
   return rows;
 }
 
+// FR018 カード配列をFR005準拠のCSV文字列へ。カンマ・改行・引用符を含む値は " で囲みエスケープ。
+function csvField(s) {
+  const v = String(s ?? "");
+  return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+}
+export function toCsv(cards) {
+  const header = FIELDS.join(",");
+  const lines = cards.map((c) =>
+    [
+      c.term,
+      c.meaning,
+      c.example,
+      c.explanation,
+      c.partOfSpeech,
+      (c.tags || []).join(";"),
+      c.importance,
+    ]
+      .map(csvField)
+      .join(","),
+  );
+  return [header, ...lines].join("\n");
+}
+
 export const CSV_FIELDS = FIELDS;
 
 // 生の項目（文字列）を検証・正規化して1枚のカードにする。取り込みとプレビュー確定で共有。

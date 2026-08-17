@@ -11,6 +11,7 @@ import {
 import { db, auth } from "./firebase.js";
 import { accuracy } from "./domain/card.js";
 import { updateBox } from "./domain/leitner.js";
+import { trackWrite, noteError } from "./quota.js";
 
 export async function listCards(deckId) {
   const snap = await getDocs(
@@ -81,7 +82,12 @@ export async function importCards(deckId, normalizedCards, dedup = "skip") {
         });
       }
     }
-    await batch.commit();
+    try {
+      await batch.commit();
+    } catch (e) {
+      noteError(e); // FR017: 無料枠超過なら状態遷移させる
+      throw e;
+    }
   }
   return { success: creates.length + overwrites.length, skipped };
 }
@@ -137,12 +143,15 @@ export function recordAnswer(card, correct) {
   const correctCount = card.correctCount + (correct ? 1 : 0);
   // 直近履歴を末尾に追加し20件で打ち切る。tはクライアント時刻（単一利用者なので順序付けに十分）。
   const recent = [...(card.recent ?? []), { c: correct ? 1 : 0, t: Date.now() }].slice(-20);
-  return updateDoc(doc(db, "cards", card.id), {
-    answerCount,
-    correctCount,
-    accuracy: accuracy(correctCount, answerCount),
-    box: updateBox(card.box, correct),
-    recent,
-    updatedAt: serverTimestamp(),
-  });
+  // trackWrite: 未同期件数の監視＋超過検知（FR009/FR017）。SDKが再送を肩代わりする。
+  return trackWrite(
+    updateDoc(doc(db, "cards", card.id), {
+      answerCount,
+      correctCount,
+      accuracy: accuracy(correctCount, answerCount),
+      box: updateBox(card.box, correct),
+      recent,
+      updatedAt: serverTimestamp(),
+    }),
+  );
 }

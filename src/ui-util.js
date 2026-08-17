@@ -12,3 +12,14 @@ export function escapeHtml(s) {
 export function pct(x) {
   return `${Math.round(x * 100)}%`;
 }
+
+// テキストをファイルとしてダウンロード。CSVはExcel互換のためBOM付きUTF-8で保存。
+export function downloadText(filename, text, mime = "text/csv") {
+  const blob = new Blob(["\uFEFF" + text], { type: `${mime};charset=utf-8` });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}

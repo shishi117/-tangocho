@@ -11,11 +11,29 @@ import {
 import { escapeHtml, pct } from "./ui-util.js";
 import { renderImport } from "./ui-import.js";
 import { renderManage } from "./ui-manage.js";
+import { onQuotaChange, getStatus } from "./quota.js";
 
 const root = document.getElementById("root");
 
 let view = "import";
 let session = null;
+let sessionInterrupted = false; // トークン失効等で中断したか（再ログイン画面で案内）
+
+// FR017/FR009 状態バナー。シェル内 #banner を更新（無い画面では何もしない）。
+function updateBanner(st = getStatus()) {
+  const el = document.getElementById("banner");
+  if (!el) return;
+  let msg = "";
+  if (st.degraded) {
+    msg =
+      "⚠ 無料枠超過中: 学習と成績記録は継続します（オンライン復帰後に自動同期）。取り込み・生成は一時停止しています。";
+  } else if (st.manyPending) {
+    msg = `⚠ 未同期の成績が${st.pending}件あります。オンラインで同期してください（データは保持されています）。`;
+  }
+  el.textContent = msg;
+  el.hidden = msg === "";
+}
+onQuotaChange(updateBanner);
 
 // ローカル日付（YYYY-MM-DD）。連続日数はユーザーのローカル時刻基準（端末クロック依存）。
 function localDateStr(d = new Date()) {
@@ -43,6 +61,11 @@ function renderLogin() {
         <h1>単語帳</h1>
         <p class="sub">資格試験の学習を、複数端末で続ける。</p>
         <button class="btn-primary" id="login">Google でサインイン</button>
+        ${
+          sessionInterrupted
+            ? `<p class="note" role="status">セッションが中断されました。回答済みの成績は保存されており、再サインイン後に同期されます。</p>`
+            : ""
+        }
         <p role="alert" class="error" id="err"></p>
       </div>
     </main>`;
@@ -74,7 +97,10 @@ function renderShell(user) {
         <span class="who"></span>
         <button class="btn-ghost" id="logout">サインアウト</button>
       </header>
-      <main class="content"><div id="view"></div></main>
+      <main class="content">
+        <div id="banner" class="banner" role="alert" aria-live="assertive" hidden></div>
+        <div id="view"></div>
+      </main>
     </div>`;
   root.querySelector(".who").textContent = user.email ?? "";
   root.querySelector("#logout").addEventListener("click", () => logout());
@@ -86,12 +112,18 @@ function renderShell(user) {
     }),
   );
   renderView();
+  updateBanner();
 }
 
 function renderView() {
   root
     .querySelectorAll(".tab")
-    .forEach((b) => b.classList.toggle("active", b.dataset.view === view));
+    .forEach((b) => {
+      const active = b.dataset.view === view;
+      b.classList.toggle("active", active);
+      if (active) b.setAttribute("aria-current", "page");
+      else b.removeAttribute("aria-current");
+    });
   const host = root.querySelector("#view");
   if (view === "import") renderImport(host);
   else if (view === "study") renderStudy(host);
@@ -337,8 +369,11 @@ async function renderProgress(host) {
 renderLoading();
 watchAuth((user) => {
   if (user) {
+    sessionInterrupted = false;
     renderShell(user);
   } else {
+    // トークン失効/サインアウト。回答は都度保存済み（SDKがローカル保持→再認証後に同期）。
+    if (session) sessionInterrupted = true;
     session = null;
     renderLogin();
   }
